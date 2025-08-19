@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "487525703070",
+    "project_id": "sports-connect-73d61",
+    "storage_bucket": "sports-connect-73d61.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:487525703070:android:abd5721d824d8649fdca8f",
+        "android_client_info": {
+          "package_name": "com.example.sports_c"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDFfelP9Qdi3HR-pn1QlTSwDrLRJuf7Hzs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

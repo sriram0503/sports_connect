@@ -1,7 +1,28 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/services.dart';
 
+
+class SignUP extends StatelessWidget {
+  const SignUP({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Sports Connect',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        visualDensity: VisualDensity.adaptivePlatformDensity,
+      ),
+      home: const SignUpPage(),
+    );
+  }
+}
+
 class SignUpPage extends StatefulWidget {
+  const SignUpPage({super.key});
+
   @override
   _SignUpPageState createState() => _SignUpPageState();
 }
@@ -16,10 +37,28 @@ class _SignUpPageState extends State<SignUpPage> {
   final TextEditingController addressController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
   final TextEditingController confirmPasswordController = TextEditingController();
+  final TextEditingController ageController = TextEditingController();
+  final TextEditingController heightController = TextEditingController();
+  final TextEditingController weightController = TextEditingController();
+  final TextEditingController aboutController = TextEditingController();
 
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   String? _selectedGender = 'Male';
+  bool _isLoading = false;
+
+  final List<String> _sportsList = [
+    "Football",
+    "Cricket",
+    "Hockey",
+    "Basketball",
+    "Tennis",
+    "Badminton",
+    "Volleyball",
+    "Running",
+    "Swimming",
+  ];
+  final List<String> _selectedSports = [];
 
   @override
   void dispose() {
@@ -30,7 +69,120 @@ class _SignUpPageState extends State<SignUpPage> {
     addressController.dispose();
     passwordController.dispose();
     confirmPasswordController.dispose();
+    ageController.dispose();
+    heightController.dispose();
+    weightController.dispose();
+    aboutController.dispose();
     super.dispose();
+  }
+
+  Future<void> signUp() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (!passwordConfirmed()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Passwords do not match')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: emailController.text.trim(),
+        password: passwordController.text.trim(),
+      );
+
+      final userId = userCredential.user?.uid;
+
+      if (userId != null) {
+        await addUserDetails(
+          userId,
+          firstNameController.text.trim(),
+          lastNameController.text.trim(),
+          int.parse(ageController.text.trim()),
+          int.parse(heightController.text.trim()),
+          int.parse(weightController.text.trim()),
+          addressController.text.trim(),
+          int.parse(phoneController.text.trim()),
+          emailController.text.trim(),
+          aboutController.text.trim(),
+          _selectedGender!,
+          _selectedSports,
+        );
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Sign Up Successful')),
+        );
+
+        // Clear form after successful submission
+        _formKey.currentState!.reset();
+        _selectedSports.clear();
+        setState(() {
+          _selectedGender = 'Male';
+        });
+      }
+    } on FirebaseAuthException catch (e) {
+      String errorMessage = 'An error occurred during sign up';
+      if (e.code == 'weak-password') {
+        errorMessage = 'The password provided is too weak.';
+      } else if (e.code == 'email-already-in-use') {
+        errorMessage = 'The account already exists for that email.';
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errorMessage)),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> addUserDetails(
+      String userId,
+      String firstName,
+      String lastName,
+      int age,
+      int height,
+      int weight,
+      String address,
+      int phoneNumber,
+      String email,
+      String bio,
+      String gender,
+      List<String> sportsInterests,
+      ) async {
+    try {
+      await FirebaseFirestore.instance.collection('user').doc(userId).set({
+        'first name': firstName,
+        'last name': lastName,
+        'age': age,
+        'height': height,
+        'weight': weight,
+        'address': address,
+        'phone number': phoneNumber,
+        'email': email,
+        'bio': bio,
+        'gender': gender,
+        'sports_interests': sportsInterests,
+        'created_at': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      print('Error adding user details: $e');
+      rethrow;
+    }
+  }
+
+  bool passwordConfirmed() {
+    return passwordController.text.trim() == confirmPasswordController.text.trim();
   }
 
   @override
@@ -38,16 +190,15 @@ class _SignUpPageState extends State<SignUpPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'Create a New Account',
+          'Sports Connect - Sign Up',
           style: TextStyle(
             color: Colors.white,
             fontSize: 22,
             fontWeight: FontWeight.bold,
-            fontFamily: 'Roboto',
           ),
         ),
         centerTitle: true,
-        backgroundColor: Colors.blue.shade400,
+        backgroundColor: Colors.blue.shade700,
         iconTheme: const IconThemeData(color: Colors.white),
         elevation: 4,
       ),
@@ -74,7 +225,7 @@ class _SignUpPageState extends State<SignUpPage> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const Text(
-                      "Sign Up",
+                      "Create Your Account",
                       style: TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.bold,
@@ -84,7 +235,51 @@ class _SignUpPageState extends State<SignUpPage> {
                     ),
                     const SizedBox(height: 20),
 
-                    /// First & Last Name Row
+                    // Firebase Status Indicator
+                    StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance.collection('user').snapshots(),
+                      builder: (context, snapshot) {
+                        String status = "Firestore: Connecting...";
+                        Color statusColor = Colors.orange;
+
+                        if (snapshot.hasError) {
+                          status = "Firestore: Error";
+                          statusColor = Colors.red;
+                        } else if (snapshot.connectionState == ConnectionState.waiting) {
+                          status = "Firestore: Connecting...";
+                          statusColor = Colors.orange;
+                        } else if (snapshot.hasData) {
+                          status = "Firestore: Connected (${snapshot.data!.docs.length} users)";
+                          statusColor = Colors.green;
+                        }
+
+                        return Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: statusColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: statusColor, width: 1),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.cloud, color: statusColor, size: 16),
+                              const SizedBox(width: 8),
+                              Text(
+                                status,
+                                style: TextStyle(
+                                  color: statusColor,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 20),
+
+                    /// First & Last Name
                     Row(
                       children: [
                         Expanded(
@@ -133,7 +328,8 @@ class _SignUpPageState extends State<SignUpPage> {
                       controller: emailController,
                       keyboardType: TextInputType.emailAddress,
                       validator: (value) {
-                        final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+                        final emailRegex =
+                        RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
                         return value == null || !emailRegex.hasMatch(value)
                             ? 'Enter a valid email'
                             : null;
@@ -141,7 +337,7 @@ class _SignUpPageState extends State<SignUpPage> {
                     ),
                     const SizedBox(height: 15),
 
-                    /// Phone Number
+                    /// Phone
                     _buildTextField(
                       label: "Phone Number",
                       icon: Icons.phone_android_outlined,
@@ -157,18 +353,98 @@ class _SignUpPageState extends State<SignUpPage> {
                     ),
                     const SizedBox(height: 15),
 
-                    /// Gender Dropdown
-                    DropdownButtonFormField<String>(
-                      value: _selectedGender,
-                      items: ['Male', 'Female', 'Other']
-                          .map((gender) => DropdownMenuItem(
-                        value: gender,
-                        child: Text(gender),
-                      ))
-                          .toList(),
-                      onChanged: (value) => setState(() => _selectedGender = value),
-                      decoration: _inputDecoration("Gender", Icons.person),
-                      validator: (value) => value == null ? 'Select gender' : null,
+                    /// Gender + Age Row
+                    Row(
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: _selectedGender,
+                            items: ['Male', 'Female', 'Other']
+                                .map((gender) => DropdownMenuItem(
+                              value: gender,
+                              child: Text(gender),
+                            ))
+                                .toList(),
+                            onChanged: (value) =>
+                                setState(() => _selectedGender = value),
+                            decoration: _inputDecoration("Gender", Icons.person),
+                            validator: (value) =>
+                            value == null ? 'Select gender' : null,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _buildTextField(
+                            label: "Age",
+                            icon: Icons.calendar_today,
+                            controller: ageController,
+                            keyboardType: TextInputType.number,
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Enter age';
+                              }
+                              final age = int.tryParse(value);
+                              if (age == null || age < 1 || age > 120) {
+                                return 'Enter valid age';
+                              }
+                              return null;
+                            },
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 15),
+
+                    /// Height + Weight Row
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildTextField(
+                            label: "Height (cm)",
+                            icon: Icons.height,
+                            controller: heightController,
+                            keyboardType: TextInputType.number,
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Enter height';
+                              }
+                              final height = int.tryParse(value);
+                              if (height == null || height < 50 || height > 250) {
+                                return 'Enter valid height';
+                              }
+                              return null;
+                            },
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _buildTextField(
+                            label: "Weight (kg)",
+                            icon: Icons.monitor_weight,
+                            controller: weightController,
+                            keyboardType: TextInputType.number,
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Enter weight';
+                              }
+                              final weight = int.tryParse(value);
+                              if (weight == null || weight < 5 || weight > 300) {
+                                return 'Enter valid weight';
+                              }
+                              return null;
+                            },
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 15),
 
@@ -180,6 +456,45 @@ class _SignUpPageState extends State<SignUpPage> {
                       validator: (value) =>
                       value == null || value.isEmpty ? 'Enter address' : null,
                     ),
+                    const SizedBox(height: 15),
+
+                    /// About Yourself
+                    TextFormField(
+                      controller: aboutController,
+                      decoration: _inputDecoration("Tell about yourself", Icons.info_outline),
+                      maxLines: 4,
+                      validator: (value) =>
+                      value == null || value.isEmpty ? 'Enter details' : null,
+                    ),
+                    const SizedBox(height: 15),
+
+                    /// Sports Interest Chips
+                    const Text(
+                      "Sports Interests",
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      children: _sportsList.map((sport) {
+                        final isSelected = _selectedSports.contains(sport);
+                        return FilterChip(
+                          label: Text(sport),
+                          selected: isSelected,
+                          onSelected: (selected) {
+                            setState(() {
+                              if (selected) {
+                                _selectedSports.add(sport);
+                              } else {
+                                _selectedSports.remove(sport);
+                              }
+                            });
+                          },
+                          selectedColor: Colors.blue.shade200,
+                          checkmarkColor: Colors.white,
+                        );
+                      }).toList(),
+                    ),
                     const SizedBox(height: 20),
 
                     /// Password
@@ -188,8 +503,9 @@ class _SignUpPageState extends State<SignUpPage> {
                       obscureText: _obscurePassword,
                       decoration: _inputDecoration("Password", Icons.lock_outline).copyWith(
                         suffixIcon: IconButton(
-                          icon: Icon(
-                              _obscurePassword ? Icons.visibility_off : Icons.visibility),
+                          icon: Icon(_obscurePassword
+                              ? Icons.visibility_off
+                              : Icons.visibility),
                           onPressed: () =>
                               setState(() => _obscurePassword = !_obscurePassword),
                         ),
@@ -208,8 +524,8 @@ class _SignUpPageState extends State<SignUpPage> {
                     TextFormField(
                       controller: confirmPasswordController,
                       obscureText: _obscureConfirmPassword,
-                      decoration:
-                      _inputDecoration("Confirm Password", Icons.lock_outline).copyWith(
+                      decoration: _inputDecoration("Confirm Password", Icons.lock_outline)
+                          .copyWith(
                         suffixIcon: IconButton(
                           icon: Icon(_obscureConfirmPassword
                               ? Icons.visibility_off
@@ -219,8 +535,12 @@ class _SignUpPageState extends State<SignUpPage> {
                         ),
                       ),
                       validator: (value) {
-                        if (value == null || value.isEmpty) return 'Confirm password';
-                        if (value != passwordController.text) return 'Passwords do not match';
+                        if (value == null || value.isEmpty) {
+                          return 'Confirm password';
+                        }
+                        if (value != passwordController.text) {
+                          return 'Passwords do not match';
+                        }
                         return null;
                       },
                     ),
@@ -228,27 +548,23 @@ class _SignUpPageState extends State<SignUpPage> {
 
                     /// Sign Up Button
                     ElevatedButton.icon(
-                      icon: const Icon(Icons.person_add_alt_1, size: 22),
-                      label: const Text(
+                      icon: _isLoading
+                          ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                          : const Icon(Icons.person_add_alt_1, size: 22),
+                      label: _isLoading
+                          ? const Text('Creating Account...')
+                          : const Text(
                         'Sign Up',
                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                       ),
-                      onPressed: () {
-                        if (_formKey.currentState!.validate()) {
-                          // Process sign-up
-                          print("First Name: ${firstNameController.text}");
-                          print("Last Name: ${lastNameController.text}");
-                          print("Email: ${emailController.text}");
-                          print("Phone: ${phoneController.text}");
-                          print("Gender: $_selectedGender");
-                          print("Address: ${addressController.text}");
-                          print("Password: ${passwordController.text}");
-
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Sign Up Successful')),
-                          );
-                        }
-                      },
+                      onPressed: _isLoading ? null : signUp,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blue[900],
                         foregroundColor: Colors.white,
@@ -290,7 +606,6 @@ class _SignUpPageState extends State<SignUpPage> {
     );
   }
 
-  /// Reusable Input Decoration
   InputDecoration _inputDecoration(String label, IconData icon) {
     return InputDecoration(
       labelText: label,
@@ -312,7 +627,6 @@ class _SignUpPageState extends State<SignUpPage> {
     );
   }
 
-  /// Reusable TextField Widget
   Widget _buildTextField({
     required String label,
     required IconData icon,

@@ -6,6 +6,7 @@ import 'package:sports_c/login/login.dart';
 import 'package:sports_c/user/Home/home.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sports_c/navigation_bar/navigation.dart';
+import 'package:sports_c/user/profile/profile_page.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});

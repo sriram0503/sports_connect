@@ -1,21 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:sports_c/login/signup.dart';
-import 'package:sports_c/navigation_bar/navigation.dart'; // Import your home/dashboard page
-
-void main() {
-  runApp(MyApp());
-}
-
-class MyApp extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: LoginPage(),
-    );
-  }
-}
+import 'package:sports_c/navigation_bar/navigation.dart';
 
 class LoginPage extends StatefulWidget {
   @override
@@ -24,9 +11,52 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
-  final TextEditingController _emailPhoneController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _obscurePassword = true;
+
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  Future<void> _login() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    String email = _emailController.text.trim();
+
+    try {
+      UserCredential userCredential = await _auth.signInWithEmailAndPassword(
+        email: email,
+        password: _passwordController.text.trim(),
+      );
+
+      if (userCredential.user != null) {
+        _navigateToDashboard();
+      }
+    } on FirebaseAuthException catch (e) {
+      String errorMessage = '';
+      if (e.code == 'user-not-found') {
+        errorMessage = 'No user found for that email';
+      } else if (e.code == 'wrong-password') {
+        errorMessage = 'Wrong password provided';
+      } else {
+        errorMessage = 'Login failed. Please try again.';
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errorMessage)),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: $e")),
+      );
+    }
+  }
+
+  void _navigateToDashboard() {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => DashBoardScreen()),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,7 +65,6 @@ class _LoginPageState extends State<LoginPage> {
         width: double.infinity,
         height: double.infinity,
         decoration: BoxDecoration(
-          color: Colors.white,
           gradient: LinearGradient(
             colors: [Colors.blue.shade400, Colors.green.shade300],
             begin: Alignment.topCenter,
@@ -49,18 +78,18 @@ class _LoginPageState extends State<LoginPage> {
               double height = constraints.maxHeight;
 
               return SingleChildScrollView(
-                padding: EdgeInsets.symmetric(horizontal: 20, vertical: 30),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Sports Connect Logo
+                    // Logo
                     Container(
-                      padding: EdgeInsets.all(8),
+                      padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: Colors.white.withOpacity(0.1),
                       ),
-                      child: CircleAvatar(
+                      child: const CircleAvatar(
                         radius: 60,
                         child: Icon(Icons.person, size: 60),
                       ),
@@ -84,37 +113,36 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                       elevation: 10,
                       child: Padding(
-                        padding: EdgeInsets.all(20),
+                        padding: const EdgeInsets.all(20),
                         child: Form(
                           key: _formKey,
                           child: Column(
                             children: [
                               TextFormField(
-                                controller: _emailPhoneController,
-                                decoration: InputDecoration(
-                                  labelText: 'Email or Mobile Number',
-                                  prefixIcon: Icon(Icons.person),
+                                controller: _emailController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Email',
+                                  prefixIcon: Icon(Icons.email),
                                   border: OutlineInputBorder(),
                                 ),
                                 validator: (value) {
                                   if (value == null || value.isEmpty) {
-                                    return 'Please enter email or mobile number';
+                                    return 'Please enter your email';
                                   }
                                   final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-                                  final phoneRegex = RegExp(r'^\d{10}$');
-                                  if (!emailRegex.hasMatch(value) && !phoneRegex.hasMatch(value)) {
-                                    return 'Enter valid email or 10-digit mobile number';
+                                  if (!emailRegex.hasMatch(value)) {
+                                    return 'Enter a valid email';
                                   }
                                   return null;
                                 },
                               ),
-                              SizedBox(height: 15),
+                              const SizedBox(height: 15),
                               TextFormField(
                                 controller: _passwordController,
                                 obscureText: _obscurePassword,
                                 decoration: InputDecoration(
                                   labelText: 'Password',
-                                  prefixIcon: Icon(Icons.lock),
+                                  prefixIcon: const Icon(Icons.lock),
                                   suffixIcon: IconButton(
                                     icon: Icon(
                                       _obscurePassword
@@ -127,71 +155,76 @@ class _LoginPageState extends State<LoginPage> {
                                       });
                                     },
                                   ),
-                                  border: OutlineInputBorder(),
+                                  border: const OutlineInputBorder(),
                                 ),
                                 validator: (value) {
                                   if (value == null || value.isEmpty) {
                                     return 'Please enter password';
                                   }
-                                  String pattern =
-                                      r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#\$&*~%^()\-_=+{}\[\]|;:<>,.?/]).{8,}$';
-                                  RegExp regex = RegExp(pattern);
-                                  if (!regex.hasMatch(value)) {
-                                    return '8 chars: 1 caps, 1 num, 1 special';
-                                  }
                                   return null;
                                 },
                               ),
-                              SizedBox(height: 10),
+                              const SizedBox(height: 10),
                               Align(
                                 alignment: Alignment.centerRight,
                                 child: TextButton(
-                                  onPressed: () {},
+                                  onPressed: () async {
+                                    if (_emailController.text.trim().isNotEmpty &&
+                                        _emailController.text.contains('@')) {
+                                      try {
+                                        await _auth.sendPasswordResetEmail(
+                                            email: _emailController.text.trim());
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                              content: Text("Password reset email sent")),
+                                        );
+                                      } catch (e) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text("Error: $e")),
+                                        );
+                                      }
+                                    } else {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                            content: Text("Enter a valid email to reset")),
+                                      );
+                                    }
+                                  },
                                   child: Text(
                                     'Forgot Password?',
                                     style: TextStyle(color: Colors.blue.shade900),
                                   ),
                                 ),
                               ),
-                              SizedBox(height: 15),
+                              const SizedBox(height: 15),
                               ElevatedButton(
-                                onPressed: () {
-                                  if (_formKey.currentState!.validate()) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('Login Successful')),
-                                    );
-                                    // Navigate to DashboardScreen
-                                    Navigator.pushReplacement(
-                                      context,
-                                      MaterialPageRoute(builder: (context) => DashBoardScreen()),
-                                    );
-                                  }
-                                },
+                                onPressed: _login,
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.blue.shade900,
-                                  minimumSize: Size(double.infinity, 50),
+                                  minimumSize: const Size(double.infinity, 50),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                 ),
-                                child: Text(
+                                child: const Text(
                                   'Login',
                                   style: TextStyle(fontSize: 18, color: Colors.white),
                                 ),
                               ),
-                              SizedBox(height: 10),
+                              const SizedBox(height: 10),
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Text("Don't have an account?"),
+                                  const Text("Don't have an account?"),
                                   TextButton(
                                     onPressed: () {
                                       Navigator.push(
                                         context,
-                                        MaterialPageRoute(builder: (context) => SignUpPage()),
+                                        MaterialPageRoute(
+                                            builder: (context) => SignUpPage()),
                                       );
                                     },
-                                    child: Text('Sign Up'),
+                                    child: const Text('Sign Up'),
                                   ),
                                 ],
                               ),

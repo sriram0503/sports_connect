@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -11,20 +13,50 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   final ImagePicker picker = ImagePicker();
+  final FirebaseAuth auth = FirebaseAuth.instance;
+  final FirebaseFirestore firestore = FirebaseFirestore.instance;
+
+  User? user;
+  Map<String, dynamic> userData = {};
+  List<String> sportsInterests = [];
+  List<String> achievements = [];
+  List<String> connections = [];
+
   File? _profileImage;
   File? _backgroundImage;
   List<File> _mediaPosts = [];
 
-  String userName = "John Doe";
-  String bio = "Coach | Mentor | Athlete";
-  String location = "New York, USA";
-  String email = "john.doe@example.com";
-  String phone = "+1 234 567 890";
-  int followers = 350;
-  int following = 180;
+  @override
+  void initState() {
+    super.initState();
+    user = auth.currentUser;
+    if (user != null) {
+      fetchUserData();
+    }
+  }
 
-  List<String> achievements = ["National Level Player", "5+ Years Coaching", "MVP 2022"];
-  List<String> skills = ["Basketball", "Leadership", "Strategy"];
+  Future<void> fetchUserData() async {
+    try {
+      DocumentSnapshot userDoc = await firestore.collection('user').doc(user!.uid).get();
+      if (userDoc.exists) {
+        setState(() {
+          userData = userDoc.data() as Map<String, dynamic>;
+
+          if (userData.containsKey('sports_interests')) {
+            sportsInterests = List<String>.from(userData['sports_interests']);
+          }
+          if (userData.containsKey('achievements')) {
+            achievements = List<String>.from(userData['achievements']);
+          }
+          if (userData.containsKey('connections')) {
+            connections = List<String>.from(userData['connections']);
+          }
+        });
+      }
+    } catch (e) {
+      print("Error fetching user data: $e");
+    }
+  }
 
   Future<void> _pickImage(bool isProfile) async {
     final source = await showDialog<ImageSource>(
@@ -94,11 +126,16 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   void _editInfoPopup() {
-    TextEditingController nameCtrl = TextEditingController(text: userName);
-    TextEditingController bioCtrl = TextEditingController(text: bio);
-    TextEditingController phoneCtrl = TextEditingController(text: phone);
-    TextEditingController emailCtrl = TextEditingController(text: email);
-    TextEditingController locCtrl = TextEditingController(text: location);
+    TextEditingController nameCtrl = TextEditingController(
+        text: userData['first name'] != null && userData['last name'] != null
+            ? '${userData['first name']} ${userData['last name']}'
+            : user?.displayName ?? '');
+    TextEditingController bioCtrl = TextEditingController(text: userData['bio'] ?? '');
+    TextEditingController phoneCtrl = TextEditingController(text: userData['phone number']?.toString() ?? '');
+    TextEditingController emailCtrl = TextEditingController(text: user?.email ?? '');
+    TextEditingController locCtrl = TextEditingController(text: userData['address'] ?? '');
+    TextEditingController ageCtrl = TextEditingController(text: userData['age']?.toString() ?? '');
+    TextEditingController heightCtrl = TextEditingController(text: userData['height']?.toString() ?? '');
 
     showDialog(
       context: context,
@@ -112,44 +149,41 @@ class _ProfilePageState extends State<ProfilePage> {
               children: [
                 TextField(
                   controller: nameCtrl,
-                  decoration: const InputDecoration(
-                    labelText: "Name",
-                    border: OutlineInputBorder(),
-                  ),
+                  decoration: const InputDecoration(labelText: "Name", border: OutlineInputBorder()),
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: bioCtrl,
-                  decoration: const InputDecoration(
-                    labelText: "Bio",
-                    border: OutlineInputBorder(),
-                  ),
+                  decoration: const InputDecoration(labelText: "Bio", border: OutlineInputBorder()),
                   maxLines: 2,
                   minLines: 2,
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: phoneCtrl,
-                  decoration: const InputDecoration(
-                    labelText: "Phone",
-                    border: OutlineInputBorder(),
-                  ),
+                  decoration: const InputDecoration(labelText: "Phone", border: OutlineInputBorder()),
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: emailCtrl,
-                  decoration: const InputDecoration(
-                    labelText: "Email",
-                    border: OutlineInputBorder(),
-                  ),
+                  decoration: const InputDecoration(labelText: "Email", border: OutlineInputBorder()),
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: locCtrl,
-                  decoration: const InputDecoration(
-                    labelText: "Location",
-                    border: OutlineInputBorder(),
-                  ),
+                  decoration: const InputDecoration(labelText: "Location", border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: ageCtrl,
+                  decoration: const InputDecoration(labelText: "Age", border: OutlineInputBorder()),
+                  keyboardType: TextInputType.number,
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: heightCtrl,
+                  decoration: const InputDecoration(labelText: "Height (cm)", border: OutlineInputBorder()),
+                  keyboardType: TextInputType.number,
                 ),
               ],
             ),
@@ -160,11 +194,16 @@ class _ProfilePageState extends State<ProfilePage> {
           ElevatedButton(
             onPressed: () {
               setState(() {
-                userName = nameCtrl.text;
-                bio = bioCtrl.text;
-                phone = phoneCtrl.text;
-                email = emailCtrl.text;
-                location = locCtrl.text;
+                userData['first name'] = nameCtrl.text.split(' ').first;
+                userData['last name'] = nameCtrl.text.split(' ').length > 1
+                    ? nameCtrl.text.split(' ').sublist(1).join(' ')
+                    : '';
+                userData['bio'] = bioCtrl.text;
+                userData['phone number'] = int.tryParse(phoneCtrl.text);
+                userData['email'] = emailCtrl.text;
+                userData['address'] = locCtrl.text;
+                userData['age'] = int.tryParse(ageCtrl.text);
+                userData['height'] = int.tryParse(heightCtrl.text);
               });
               Navigator.pop(context);
             },
@@ -177,7 +216,27 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    String fullName = '';
+    if (userData['first name'] != null && userData['last name'] != null) {
+      fullName = '${userData['first name']} ${userData['last name']}';
+    } else {
+      fullName = user?.displayName ?? 'User';
+    }
+
     return Scaffold(
+      appBar: AppBar(
+        title: const Text('Profile'),
+        automaticallyImplyLeading: false,
+        actions: [
+          IconButton(
+            onPressed: () async {
+              await FirebaseAuth.instance.signOut();
+              Navigator.pushNamed(context, '/');
+            },
+            icon: const Icon(Icons.logout),
+          )
+        ],
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           child: Column(
@@ -204,9 +263,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: Colors.white,
-                        boxShadow: [
-                          BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 2))
-                        ],
+                        boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 2))],
                       ),
                       padding: const EdgeInsets.all(2),
                       child: CircleAvatar(
@@ -225,26 +282,12 @@ class _ProfilePageState extends State<ProfilePage> {
                       children: [
                         GestureDetector(
                           onTap: () => _pickImage(false),
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: const BoxDecoration(
-                              color: Colors.black54,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(Icons.edit, color: Colors.white, size: 20),
-                          ),
+                          child: _editIcon(),
                         ),
                         const SizedBox(height: 8),
                         GestureDetector(
                           onTap: () => _pickImage(true),
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: const BoxDecoration(
-                              color: Colors.black54,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(Icons.edit, color: Colors.white, size: 20),
-                          ),
+                          child: _editIcon(),
                         ),
                       ],
                     ),
@@ -252,10 +295,11 @@ class _ProfilePageState extends State<ProfilePage> {
                 ],
               ),
               const SizedBox(height: 70),
-              _infoCard(),
-              _followersRow(),
-              _buildEditableChips(achievements, "Achievements"),
-              _buildEditableChips(skills, "Skills"),
+              _infoCard(fullName),
+              _physicalAttributesCard(),
+              _buildEditableChips(connections, "Connections"), // new
+              _buildEditableChips(sportsInterests, "Sports Interests"),
+              _buildEditableChips(achievements, "Achievements"), // new
               _postGallery(),
             ],
           ),
@@ -264,7 +308,7 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _infoCard() {
+  Widget _infoCard(String fullName) {
     return Card(
       margin: const EdgeInsets.all(16),
       elevation: 4,
@@ -277,60 +321,67 @@ class _ProfilePageState extends State<ProfilePage> {
             Row(
               children: [
                 Expanded(
-                  child: Text(userName,
+                  child: Text(fullName,
                       style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                 ),
                 IconButton(onPressed: _editInfoPopup, icon: const Icon(Icons.edit))
               ],
             ),
-            Text(bio),
+            Text(userData['bio'] ?? 'No bio provided'),
             const SizedBox(height: 6),
-            Text("📍 $location"),
-            Text("📧 $email"),
-            Text("📞 $phone"),
+            if (userData['address'] != null) Text("📍 ${userData['address']}"),
+            Text("📧 ${user?.email ?? 'No email'}"),
+            if (userData['phone number'] != null) Text("📞 ${userData['phone number']}"),
           ],
         ),
       ),
     );
   }
 
-  Widget _followersRow() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Column(
-                children: [
-                  Text("$followers", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const Text("Followers"),
-                ],
-              ),
+  Widget _physicalAttributesCard() {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("My Physical Info",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                if (userData['age'] != null)
+                  Column(
+                    children: [
+                      Text("${userData['age']}",
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      const Text("Age"),
+                    ],
+                  ),
+                if (userData['height'] != null)
+                  Column(
+                    children: [
+                      Text("${userData['height']} cm",
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      const Text("Height"),
+                    ],
+                  ),
+                if (userData['gender'] != null)
+                  Column(
+                    children: [
+                      Text("${userData['gender']}",
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      const Text("Gender"),
+                    ],
+                  ),
+              ],
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.green.shade50,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Column(
-                children: [
-                  Text("$following", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const Text("Following"),
-                ],
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -404,7 +455,8 @@ class _ProfilePageState extends State<ProfilePage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("Media Posts", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const Text("Media Posts",
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               IconButton(onPressed: _pickMediaPost, icon: const Icon(Icons.add_a_photo))
             ],
           ),
@@ -441,6 +493,14 @@ class _ProfilePageState extends State<ProfilePage> {
           )
         ],
       ),
+    );
+  }
+
+  Widget _editIcon() {
+    return Container(
+      padding: const EdgeInsets.all(6),
+      decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+      child: const Icon(Icons.edit, color: Colors.white, size: 20),
     );
   }
 }

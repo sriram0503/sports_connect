@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:cloudinary_public/cloudinary_public.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -11,9 +13,7 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   final ImagePicker picker = ImagePicker();
-  File? _profileImage;
-  File? _backgroundImage;
-  List<File> _mediaPosts = [];
+  final cloudinary = CloudinaryPublic('dboltoh0q', 'flutter_present', cache: false);
 
   String userName = "John Doe";
   String bio = "Coach | Mentor | Athlete";
@@ -26,51 +26,127 @@ class _ProfilePageState extends State<ProfilePage> {
   List<String> achievements = ["National Level Player", "5+ Years Coaching", "MVP 2022"];
   List<String> skills = ["Basketball", "Leadership", "Strategy"];
 
+  String? _profileImageUrl;
+  String? _backgroundImageUrl;
+  List<String> _mediaPostsUrl = [];
+
+  final String userId = "user1"; // Firestore document ID
+
+  @override
+  void initState() {
+    super.initState();
+    loadImagesFromFirestore();
+  }
+
+  /// Load saved image URLs from Firestore
+  Future<void> loadImagesFromFirestore() async {
+    DocumentSnapshot doc =
+    await FirebaseFirestore.instance.collection('users').doc(userId).get();
+    if (doc.exists) {
+      setState(() {
+        _profileImageUrl = doc['profileImage'];
+        _backgroundImageUrl = doc['backgroundImage'];
+        _mediaPostsUrl = List<String>.from(doc['mediaPosts'] ?? []);
+      });
+    }
+  }
+
+  /// Upload image to Cloudinary and get URL
+  Future<String?> uploadToCloudinary(File imageFile) async {
+    try {
+      CloudinaryResponse response = await cloudinary.uploadFile(
+        CloudinaryFile.fromFile(imageFile.path, folder: 'my_app_images'),
+      );
+      return response.secureUrl;
+    } catch (e) {
+      print("Cloudinary upload error: $e");
+      return null;
+    }
+  }
+
+  /// Store image URL in Firestore
+  Future<void> storeImageUrlInFirestore(String imageUrl, String type) async {
+    final docRef = FirebaseFirestore.instance.collection('users').doc(userId);
+
+    if (type == 'mediaPosts') {
+      await docRef.set({
+        'mediaPosts': FieldValue.arrayUnion([imageUrl])
+      }, SetOptions(merge: true));
+    } else {
+      await docRef.set({type: imageUrl}, SetOptions(merge: true));
+    }
+  }
+
+  /// Pick profile/background image
   Future<void> _pickImage(bool isProfile) async {
     final source = await showDialog<ImageSource>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("Select Image Source"),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, ImageSource.camera), child: const Text("Camera")),
-          TextButton(onPressed: () => Navigator.pop(context, ImageSource.gallery), child: const Text("Gallery")),
+          TextButton(
+              onPressed: () => Navigator.pop(context, ImageSource.camera),
+              child: const Text("Camera")),
+          TextButton(
+              onPressed: () => Navigator.pop(context, ImageSource.gallery),
+              child: const Text("Gallery")),
         ],
       ),
     );
     if (source == null) return;
+
     final pickedFile = await picker.pickImage(source: source);
     if (pickedFile != null) {
-      setState(() {
-        if (isProfile) {
-          _profileImage = File(pickedFile.path);
-        } else {
-          _backgroundImage = File(pickedFile.path);
-        }
-      });
+      File imageFile = File(pickedFile.path);
+      String? imageUrl = await uploadToCloudinary(imageFile);
+      if (imageUrl != null) {
+        await storeImageUrlInFirestore(imageUrl, isProfile ? "profileImage" : "backgroundImage");
+        setState(() {
+          if (isProfile) {
+            _profileImageUrl = imageUrl;
+          } else {
+            _backgroundImageUrl = imageUrl;
+          }
+        });
+      }
     }
   }
 
+  /// Pick media post
   Future<void> _pickMediaPost() async {
     final source = await showDialog<ImageSource>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("Select Media Source"),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, ImageSource.camera), child: const Text("Camera")),
-          TextButton(onPressed: () => Navigator.pop(context, ImageSource.gallery), child: const Text("Gallery")),
+          TextButton(
+              onPressed: () => Navigator.pop(context, ImageSource.camera),
+              child: const Text("Camera")),
+          TextButton(
+              onPressed: () => Navigator.pop(context, ImageSource.gallery),
+              child: const Text("Gallery")),
         ],
       ),
     );
     if (source == null) return;
+
     final pickedFile = await picker.pickImage(source: source);
     if (pickedFile != null) {
-      bool confirm = await _showConfirmationDialog(File(pickedFile.path));
+      File imageFile = File(pickedFile.path);
+      bool confirm = await _showConfirmationDialog(imageFile);
       if (confirm) {
-        setState(() => _mediaPosts.add(File(pickedFile.path)));
+        String? imageUrl = await uploadToCloudinary(imageFile);
+        if (imageUrl != null) {
+          await storeImageUrlInFirestore(imageUrl, "mediaPosts");
+          setState(() {
+            _mediaPostsUrl.add(imageUrl);
+          });
+        }
       }
     }
   }
 
+  /// Confirm before posting
   Future<bool> _showConfirmationDialog(File image) async {
     bool? result = await showDialog(
       context: context,
@@ -110,47 +186,15 @@ class _ProfilePageState extends State<ProfilePage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(
-                    labelText: "Name",
-                    border: OutlineInputBorder(),
-                  ),
-                ),
+                TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: "Name", border: OutlineInputBorder())),
                 const SizedBox(height: 10),
-                TextField(
-                  controller: bioCtrl,
-                  decoration: const InputDecoration(
-                    labelText: "Bio",
-                    border: OutlineInputBorder(),
-                  ),
-                  maxLines: 2,
-                  minLines: 2,
-                ),
+                TextField(controller: bioCtrl, decoration: const InputDecoration(labelText: "Bio", border: OutlineInputBorder()), maxLines: 2),
                 const SizedBox(height: 10),
-                TextField(
-                  controller: phoneCtrl,
-                  decoration: const InputDecoration(
-                    labelText: "Phone",
-                    border: OutlineInputBorder(),
-                  ),
-                ),
+                TextField(controller: phoneCtrl, decoration: const InputDecoration(labelText: "Phone", border: OutlineInputBorder())),
                 const SizedBox(height: 10),
-                TextField(
-                  controller: emailCtrl,
-                  decoration: const InputDecoration(
-                    labelText: "Email",
-                    border: OutlineInputBorder(),
-                  ),
-                ),
+                TextField(controller: emailCtrl, decoration: const InputDecoration(labelText: "Email", border: OutlineInputBorder())),
                 const SizedBox(height: 10),
-                TextField(
-                  controller: locCtrl,
-                  decoration: const InputDecoration(
-                    labelText: "Location",
-                    border: OutlineInputBorder(),
-                  ),
-                ),
+                TextField(controller: locCtrl, decoration: const InputDecoration(labelText: "Location", border: OutlineInputBorder())),
               ],
             ),
           ),
@@ -166,6 +210,13 @@ class _ProfilePageState extends State<ProfilePage> {
                 email = emailCtrl.text;
                 location = locCtrl.text;
               });
+              FirebaseFirestore.instance.collection('users').doc(userId).set({
+                'userName': userName,
+                'bio': bio,
+                'phone': phone,
+                'email': email,
+                'location': location,
+              }, SetOptions(merge: true));
               Navigator.pop(context);
             },
             child: const Text("Save"),
@@ -189,63 +240,29 @@ class _ProfilePageState extends State<ProfilePage> {
                     height: 220,
                     width: double.infinity,
                     decoration: BoxDecoration(
-                      image: DecorationImage(
-                        image: _backgroundImage != null
-                            ? FileImage(_backgroundImage!)
-                            : const AssetImage("assets/bg_placeholder.jpg") as ImageProvider,
-                        fit: BoxFit.cover,
-                      ),
+                      image: _backgroundImageUrl != null
+                          ? DecorationImage(image: NetworkImage(_backgroundImageUrl!), fit: BoxFit.cover)
+                          : null,
                     ),
                   ),
                   Positioned(
                     top: 160,
                     left: MediaQuery.of(context).size.width / 2 - 60,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white,
-                        boxShadow: [
-                          BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 2))
-                        ],
-                      ),
-                      padding: const EdgeInsets.all(2),
-                      child: CircleAvatar(
-                        radius: 60,
-                        backgroundImage: _profileImage != null
-                            ? FileImage(_profileImage!)
-                            : const AssetImage("assets/profile_placeholder.png") as ImageProvider,
-                      ),
+                    child: CircleAvatar(
+                      radius: 60,
+                      backgroundImage: _profileImageUrl != null
+                          ? NetworkImage(_profileImageUrl!)
+                          : null,
                     ),
                   ),
                   Positioned(
                     top: 8,
                     right: 12,
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        GestureDetector(
-                          onTap: () => _pickImage(false),
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: const BoxDecoration(
-                              color: Colors.black54,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(Icons.edit, color: Colors.white, size: 20),
-                          ),
-                        ),
+                        GestureDetector(onTap: () => _pickImage(false), child: const Icon(Icons.edit)),
                         const SizedBox(height: 8),
-                        GestureDetector(
-                          onTap: () => _pickImage(true),
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: const BoxDecoration(
-                              color: Colors.black54,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(Icons.edit, color: Colors.white, size: 20),
-                          ),
-                        ),
+                        GestureDetector(onTap: () => _pickImage(true), child: const Icon(Icons.edit)),
                       ],
                     ),
                   ),
@@ -267,22 +284,12 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget _infoCard() {
     return Card(
       margin: const EdgeInsets.all(16),
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(userName,
-                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-                ),
-                IconButton(onPressed: _editInfoPopup, icon: const Icon(Icons.edit))
-              ],
-            ),
+            Row(children: [Expanded(child: Text(userName, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold))), IconButton(onPressed: _editInfoPopup, icon: const Icon(Icons.edit))]),
             Text(bio),
             const SizedBox(height: 6),
             Text("📍 $location"),
@@ -302,32 +309,16 @@ class _ProfilePageState extends State<ProfilePage> {
           Expanded(
             child: Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Column(
-                children: [
-                  Text("$followers", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const Text("Followers"),
-                ],
-              ),
+              decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
+              child: Column(children: [Text("$followers", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), const Text("Followers")]),
             ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.green.shade50,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Column(
-                children: [
-                  Text("$following", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const Text("Following"),
-                ],
-              ),
+              decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(8)),
+              child: Column(children: [Text("$following", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), const Text("Following")]),
             ),
           ),
         ],
@@ -339,7 +330,6 @@ class _ProfilePageState extends State<ProfilePage> {
     TextEditingController ctrl = TextEditingController();
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      elevation: 3,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
@@ -355,20 +345,12 @@ class _ProfilePageState extends State<ProfilePage> {
                     context: context,
                     builder: (_) => AlertDialog(
                       title: Text("Add $title"),
-                      content: TextField(
-                        controller: ctrl,
-                        decoration: const InputDecoration(
-                          labelText: "Enter value",
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
+                      content: TextField(controller: ctrl, decoration: const InputDecoration(labelText: "Enter value", border: OutlineInputBorder())),
                       actions: [
                         TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
                         ElevatedButton(
                           onPressed: () {
-                            if (ctrl.text.trim().isNotEmpty) {
-                              setState(() => list.add(ctrl.text.trim()));
-                            }
+                            if (ctrl.text.trim().isNotEmpty) setState(() => list.add(ctrl.text.trim()));
                             Navigator.pop(context);
                           },
                           child: const Text("Add"),
@@ -381,13 +363,7 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             Wrap(
               spacing: 6,
-              children: list
-                  .map((item) => Chip(
-                label: Text(item),
-                deleteIcon: const Icon(Icons.close),
-                onDeleted: () => setState(() => list.remove(item)),
-              ))
-                  .toList(),
+              children: list.map((item) => Chip(label: Text(item), deleteIcon: const Icon(Icons.close), onDeleted: () => setState(() => list.remove(item)))).toList(),
             )
           ],
         ),
@@ -401,34 +377,31 @@ class _ProfilePageState extends State<ProfilePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text("Media Posts", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              IconButton(onPressed: _pickMediaPost, icon: const Icon(Icons.add_a_photo))
-            ],
-          ),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text("Media Posts", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), IconButton(onPressed: _pickMediaPost, icon: const Icon(Icons.add_a_photo))]),
           const SizedBox(height: 8),
-          _mediaPosts.isEmpty
+          _mediaPostsUrl.isEmpty
               ? const Text("No posts yet.")
               : GridView.builder(
             physics: const NeverScrollableScrollPhysics(),
             shrinkWrap: true,
-            itemCount: _mediaPosts.length,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              crossAxisSpacing: 4,
-              mainAxisSpacing: 4,
-            ),
+            itemCount: _mediaPostsUrl.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 4, mainAxisSpacing: 4),
             itemBuilder: (_, i) => Stack(
               fit: StackFit.expand,
               children: [
-                Image.file(_mediaPosts[i], fit: BoxFit.cover),
+                Image.network(_mediaPostsUrl[i], fit: BoxFit.cover),
                 Positioned(
                   top: 4,
                   right: 4,
                   child: GestureDetector(
-                    onTap: () => setState(() => _mediaPosts.removeAt(i)),
+                    onTap: () {
+                      setState(() {
+                        FirebaseFirestore.instance.collection('users').doc(userId).set({
+                          'mediaPosts': FieldValue.arrayRemove([_mediaPostsUrl[i]])
+                        }, SetOptions(merge: true));
+                        _mediaPostsUrl.removeAt(i);
+                      });
+                    },
                     child: const CircleAvatar(
                       radius: 12,
                       backgroundColor: Colors.black54,

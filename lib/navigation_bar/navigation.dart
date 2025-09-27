@@ -18,7 +18,8 @@ class _DashBoardScreenState extends State<DashBoardScreen> {
   int _selectedIndex = 0;
 
   final List<Widget> _pages = [
-    const HomePage(),
+    // const HomePage(),
+    Placeholder(),
     const SearchPage(),
     const ChatListScreen(),
     const ProfilePage(),

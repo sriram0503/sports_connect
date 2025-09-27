@@ -47,14 +47,14 @@ class _OtherUserProfilePageState extends State<OtherUserProfilePage> {
                   Container(
                     height: 220,
                     width: double.infinity,
-                    decoration: BoxDecoration(
-                      image: DecorationImage(
-                        image: _backgroundImage != null
-                            ? FileImage(_backgroundImage!)
-                            : const AssetImage("assets/bg_placeholder.jpg") as ImageProvider,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
+                    // decoration: BoxDecoration(
+                    //   image: DecorationImage(
+                    //     image: _backgroundImage != null
+                    //         ? FileImage(_backgroundImage!)
+                    //         : const AssetImage("assets/bg_placeholder.jpg") as ImageProvider,
+                    //     fit: BoxFit.cover,
+                    //   ),
+                    // ),
                   ),
                   Positioned(
                     top: 160,
@@ -70,9 +70,9 @@ class _OtherUserProfilePageState extends State<OtherUserProfilePage> {
                       padding: const EdgeInsets.all(2),
                       child: CircleAvatar(
                         radius: 60,
-                        backgroundImage: _profileImage != null
-                            ? FileImage(_profileImage!)
-                            : const AssetImage("assets/profile_placeholder.png") as ImageProvider,
+                        // backgroundImage: _profileImage != null
+                        //     ? FileImage(_profileImage!)
+                        //     : const AssetImage("assets/profile_placeholder.png") as ImageProvider,
                       ),
                     ),
                   ),

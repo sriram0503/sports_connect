@@ -29,14 +29,14 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   void onTimerFinished() {
-    // Navigator.of(context).pushAndRemoveUntil(
-    //   MaterialPageRoute(builder: (context) =>  LoginPage()),
-    //       (Route<dynamic> route) => false,
-    // );
     Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (context) =>  DashBoardScreen()),
+      MaterialPageRoute(builder: (context) =>  LoginPage()),
           (Route<dynamic> route) => false,
     );
+    // Navigator.of(context).pushAndRemoveUntil(
+    //   MaterialPageRoute(builder: (context) =>  DashBoardScreen()),
+    //       (Route<dynamic> route) => false,
+    // );
   }
 
   @override
